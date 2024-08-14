@@ -1,0 +1,13 @@
+---
+prefix: "a-rsg-"
+tags:
+  application_id: S1234
+  application_name: data-platform
+  cost_center: 12345
+  managed_by: terraform
+  project: data-platform
+  critical: true
+  creator: jdoe
+  owner: jdoe
+  customer: Acme
+  git_repo: ""
