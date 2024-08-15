@@ -62,7 +62,7 @@ jobs:
 
   no_changes:
     needs: prepare
-    if: needs.prepare.outputs.has_changes == 'false'
+    if: needs.prepare.outputs.has_changes == 'False'
     runs-on: ubuntu-latest
     steps:
     - name: No changes detected
@@ -71,7 +71,7 @@ jobs:
 
   terraform:
     needs: prepare
-    if: needs.prepare.outputs.has_changes == 'true'
+    if: needs.prepare.outputs.has_changes == 'True'
     runs-on: ubuntu-latest
     strategy:
       matrix: ${{fromJson(needs.prepare.outputs.matrix)}}
