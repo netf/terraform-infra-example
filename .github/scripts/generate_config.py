@@ -1,7 +1,6 @@
 import os
 import json
-import subprocess
-from typing import Dict, Any, List
+from typing import Dict, Any
 from dataclasses import dataclass
 
 
@@ -17,25 +16,7 @@ def generate_role_arn(account: str) -> str:
     return f"arn:aws:iam::{account}:role/deployment-role"
 
 
-def get_changed_files() -> List[str]:
-    event_name = os.environ.get('GITHUB_EVENT_NAME')
-    if event_name == 'pull_request':
-        base_sha = os.environ.get('GITHUB_BASE_REF')
-        head_sha = os.environ.get('GITHUB_HEAD_REF')
-        diff_command = ['git', 'diff', '--name-only', f'origin/{base_sha}...origin/{head_sha}']
-    else:
-        # For push events or any other event, compare with the last commit
-        diff_command = ['git', 'diff', '--name-only', 'HEAD~1', 'HEAD']
-
-    try:
-        result = subprocess.run(diff_command, capture_output=True, text=True, check=True)
-        return result.stdout.splitlines()
-    except subprocess.CalledProcessError as e:
-        print(f"Error running git diff: {e}")
-        return []
-
-
-def parse_directory(path: str, changed_files: List[str]) -> Dict[str, EnvironmentConfig]:
+def parse_directory(path: str) -> Dict[str, EnvironmentConfig]:
     config = {}
     for class_type in os.listdir(path):
         class_path = os.path.join(path, class_type)
@@ -45,10 +26,6 @@ def parse_directory(path: str, changed_files: List[str]) -> Dict[str, Environmen
         for env in os.listdir(class_path):
             env_path = os.path.join(class_path, env)
             if not os.path.isdir(env_path):
-                continue
-
-            env_files = [f for f in changed_files if f.startswith(os.path.join(path, class_type, env))]
-            if not env_files:
                 continue
 
             account_dirs = os.listdir(env_path)
@@ -73,9 +50,8 @@ def parse_directory(path: str, changed_files: List[str]) -> Dict[str, Environmen
 
 
 def main():
-    root_dir = os.environ.get('GITHUB_WORKSPACE', 'workloads')
-    changed_files = get_changed_files()
-    config = parse_directory(root_dir, changed_files)
+    root_dir = "workloads"
+    config = parse_directory(root_dir)
 
     json_output = {
         env: {
