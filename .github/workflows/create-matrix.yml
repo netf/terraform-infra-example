@@ -13,55 +13,45 @@ on:
 
 jobs:
   set-matrix:
-    name: Generate Environment Matrix
+    name: Environments
     runs-on: ubuntu-latest
     outputs:
       env_list: ${{ steps.create-matrix.outputs.env_list }}
       environments: ${{ steps.create-matrix.outputs.environments }}
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Fetch all history for all branches and tags
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for all branches and tags
 
-      - name: Set up Python ${{ inputs.python_version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ inputs.python_version }}
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ inputs.python_version }}
 
-      - name: Generate Environment Config
-        id: create-matrix
-        run: |
-          python .github/scripts/generate_config.py > env_config.json
-          
-          if [[ $? -ne 0 ]]; then
-            echo "Error: generate_config.py failed" >&2
-            exit 1
-          fi
+    - name: Execute generate_config.py
+      id: create-matrix
+      run: |
+        python .github/scripts/generate_config.py > script_output.txt
+        cat script_output.txt
+        ENV_LIST=$(tail -n 1 script_output.txt | jq -c '.')
+        if [ -z "$ENV_LIST" ] || [ "$ENV_LIST" == "{}" ]; then
+          echo "Error: No environments found in the output"
+          exit 1
+        fi
+        ENVIRONMENTS=$(echo $ENV_LIST | jq -r 'keys | join(",")')
+        echo "env_list=$ENV_LIST" >> $GITHUB_OUTPUT
+        echo "environments=$ENVIRONMENTS" >> $GITHUB_OUTPUT
 
-          ENV_LIST=$(cat env_config.json)
-          if [[ -z "$ENV_LIST" ]]; then
-            echo "Error: env_config.json is empty" >&2
-            exit 1
-          fi
-
-          ENVIRONMENTS=$(echo "$ENV_LIST" | jq -r 'keys | join(",")')
-          if [[ -z "$ENVIRONMENTS" ]]; then
-            echo "Error: No environments found" >&2
-            exit 1
-          fi
-
-          # Set outputs for the job
-          echo "env_list=$ENV_LIST" >> $GITHUB_OUTPUT
-          echo "environments=$ENVIRONMENTS" >> $GITHUB_OUTPUT
-
-      - name: Output Debug Information
-        run: |
-          echo "Generated environment list:"
-          cat env_config.json
-          echo "Environments: ${{ steps.create-matrix.outputs.environments }}"
-          echo "Git status:"
-          git status
-          echo "Recent Git log:"
-          git log --oneline -n 5
+    - name: Debug output
+      run: |
+        echo "Generated environment list:"
+        echo "${{ steps.create-matrix.outputs.env_list }}"
+        echo "Environments: ${{ steps.create-matrix.outputs.environments }}"
+        echo "Git status:"
+        git status
+        echo "Git log:"
+        git log --oneline -n 5
+        echo "Directory structure:"
+        tree -L 4 workloads
