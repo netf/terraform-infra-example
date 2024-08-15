@@ -29,6 +29,7 @@ jobs:
       environment: ${{ matrix.environment }}
       region: ${{fromJson(needs.set-matrix.outputs.matrix)[matrix.environment].region }}
       role_to_assume: ${{fromJson(needs.set-matrix.outputs.matrix)[matrix.environment].env_role }}
+      tf_backend_bucket: "terraform-state-bucket-12345"
 
   Apply:
     needs: [ Plan, create-matrix ]
