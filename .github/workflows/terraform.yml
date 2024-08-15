@@ -21,7 +21,9 @@ jobs:
     name: Terraform Plan - ${{ matrix.environment }}
     strategy:
       max-parallel: 4
-      matrix: ${{fromJson(needs.create-matrix.outputs.env_list)}}
+      matrix:
+        environment: ${{ fromJson(needs.create-matrix.outputs.env_list) }}
+
     uses: ./.github/workflows/terraform-plan.yml
     secrets: inherit
     with:
