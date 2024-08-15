@@ -24,14 +24,25 @@ def run_git_command(command: List[str], cwd: str) -> str:
 
 def get_modified_files(root_dir: str) -> Set[str]:
     base_branch = os.environ.get('GITHUB_BASE_REF', 'main')
+    event_name = os.environ.get('GITHUB_EVENT_NAME', '')
+    github_ref = os.environ.get('GITHUB_REF', '')
 
-    if os.environ.get('GITHUB_EVENT_NAME') == 'push':
-        # For pushes, compare with the previous commit on the same branch
-        diff_command = ['git', 'diff', '--name-only', 'HEAD^', 'HEAD']
-    else:
+    if event_name == 'pull_request':
         # For pull requests, compare with the base branch
         run_git_command(['git', 'fetch', 'origin', base_branch], root_dir)
         diff_command = ['git', 'diff', '--name-only', f'origin/{base_branch}...HEAD']
+    elif event_name == 'push':
+        # For pushes, get all commits in this push
+        if github_ref.startswith('refs/heads/'):
+            branch_name = github_ref.split('/')[-1]
+            run_git_command(['git', 'fetch', 'origin', branch_name], root_dir)
+            diff_command = ['git', 'diff', '--name-only', f'origin/{base_branch}...HEAD']
+        else:
+            # Fallback to comparing with the previous commit if branch name is not available
+            diff_command = ['git', 'diff', '--name-only', 'HEAD^', 'HEAD']
+    else:
+        # For other events or local testing, compare with the previous commit
+        diff_command = ['git', 'diff', '--name-only', 'HEAD^', 'HEAD']
 
     diff_output = run_git_command(diff_command, root_dir)
     return set(diff_output.splitlines())
