@@ -54,18 +54,15 @@ def main():
     config = parse_directory(root_dir)
 
     json_output = {
-        "include": [
-            {
-                "environment": env,
-                "region": cfg.region,
-                "account": cfg.account,
-                "env_role": cfg.role_arn,
-                "class": cfg.class_type
-            } for env, cfg in config.items()
-        ]
+        env: {
+            "region": cfg.region,
+            "account": cfg.account,
+            "role_arn": cfg.role_arn,
+            "class": cfg.class_type
+        } for env, cfg in config.items()
     }
 
-    print(json.dumps(json_output))
+    print(json.dumps(json_output, indent=2))
 
 
 if __name__ == "__main__":
