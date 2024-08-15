@@ -74,6 +74,8 @@ def parse_modified_files(modified_files: Set[str]) -> Dict[str, EnvironmentConfi
     return configs
 
 def main():
+    # Print env variables
+    print(os.environ)
     root_dir = os.getcwd()
     modified_files = get_modified_files(root_dir)
     configs = parse_modified_files(modified_files)
