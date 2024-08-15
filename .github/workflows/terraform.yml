@@ -13,7 +13,8 @@ jobs:
 
   create-matrix:
     name: Set Matrix
-    uses: ../create-matrix.yml
+    uses: ./.github/workflows/create-matrix.yml@v1
+
 
   Plan:
     needs: [create-matrix]
