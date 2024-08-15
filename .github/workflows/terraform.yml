@@ -23,7 +23,7 @@ jobs:
       max-parallel: 4
       matrix:
         environment: ["dev", "staging", "production"]
-    uses: ../terraform-plan.yml
+    uses: ./.github/workflows/terraform-plan.yml
     secrets: inherit
     with:
       environment: ${{ matrix.environment }}
@@ -37,7 +37,7 @@ jobs:
       max-parallel: 1
       matrix:
         environment: ["dev", "staging", "production"]
-    uses: ../terraform-apply.yml
+    uses: ./.github/workflows/terraform-apply.yml
     secrets: inherit
     with:
       environment: ${{ matrix.environment }}
