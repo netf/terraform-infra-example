@@ -1,7 +1,7 @@
 import os
 import json
 import subprocess
-from typing import Dict, List
+from typing import Dict, Any, Set, List
 from dataclasses import dataclass
 
 
@@ -21,7 +21,10 @@ def generate_role_arn(account: str) -> str:
 def get_modified_files(root_dir: str) -> List[str]:
     try:
         # Determine the base branch
-        base_branch = os.environ.get('GITHUB_BASE_REF', 'main')  # Default to 'main' if not in a PR
+        base_branch = os.environ.get('GITHUB_BASE_REF') or 'main'
+
+        # Fetch the base branch
+        subprocess.run(['git', 'fetch', 'origin', base_branch], check=True, cwd=root_dir)
 
         # Get the merge-base (common ancestor) of the current HEAD and the base branch
         merge_base = subprocess.check_output(['git', 'merge-base', f'origin/{base_branch}', 'HEAD'],
@@ -36,8 +39,10 @@ def get_modified_files(root_dir: str) -> List[str]:
         return diff_output.splitlines()
 
     except subprocess.CalledProcessError as e:
-        print(f"Error: Unable to get git diff. Make sure you're in a git repository. Details: {e}")
-        return []
+        print(f"Error: Unable to get git diff. Details: {e}")
+        # If we can't get the diff, return all files in the workloads directory
+        return [os.path.join(dp, f) for dp, dn, filenames in os.walk(root_dir)
+                for f in filenames if dp.startswith(os.path.join(root_dir, 'workloads'))]
 
 
 def parse_directory(path: str, modified_files: List[str]) -> Dict[str, EnvironmentConfig]:
@@ -48,7 +53,12 @@ def parse_directory(path: str, modified_files: List[str]) -> Dict[str, Environme
             continue
 
         class_type, env, account, region = parts[1:5]
-        tf_build_path = os.path.dirname(file_path)
+
+        # Calculate tf_build_path: include all directories up to and including the one containing main.tf
+        if parts[-1] == 'main.tf':
+            tf_build_path = os.path.dirname(file_path)
+        else:
+            tf_build_path = file_path
 
         if env not in config:
             config[env] = EnvironmentConfig(
@@ -65,7 +75,7 @@ def parse_directory(path: str, modified_files: List[str]) -> Dict[str, Environme
 
 
 def main():
-    root_dir = "workloads"
+    root_dir = os.getcwd()  # Use current working directory
     modified_files = get_modified_files(root_dir)
     config = parse_directory(root_dir, modified_files)
 
