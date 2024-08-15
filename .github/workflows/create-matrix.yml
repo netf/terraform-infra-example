@@ -28,7 +28,7 @@ jobs:
     - name: Execute generate_config.py
       id: create-matrix
       run: |
-        python generate_config.py > env_config.json
+        python .github/scripts/generate_config.py > env_config.json
         ENV_LIST=$(cat env_config.json | jq -c .)
         echo "env_list=$ENV_LIST" >> $GITHUB_OUTPUT
 
