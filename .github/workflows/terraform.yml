@@ -15,6 +15,17 @@ jobs:
     name: Set Matrix
     uses: ./.github/workflows/create-matrix.yml
 
+  extract-environments:
+    needs: [ create-matrix ]
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.get-environments.outputs.environments }}
+    steps:
+      - name: Get environment list
+        id: get-environments
+        run: |
+          ENVIRONMENTS=$(echo '${{ needs.create-matrix.outputs.env_list }}' | jq -r 'keys | join(",")')
+          echo "environments=$ENVIRONMENTS" >> $GITHUB_OUTPUT
 
   Plan:
     needs: [create-matrix]
@@ -22,7 +33,8 @@ jobs:
     strategy:
       max-parallel: 4
       matrix:
-        environment: ${{ fromJson(needs.create-matrix.outputs.env_list) | keys }}
+        environment: ${{ fromJson(format('[{0}]', needs.extract-environments.outputs.environments)) }}
+
 
     uses: ./.github/workflows/terraform-plan.yml
     secrets: inherit
