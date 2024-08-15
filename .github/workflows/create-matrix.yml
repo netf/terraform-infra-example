@@ -8,6 +8,8 @@ on:
     outputs:
       env_list:
         value: ${{ jobs.set-matrix.outputs.env_list }}
+      environments:
+        value: ${{ jobs.set-matrix.outputs.environments }}
 
 jobs:
   set-matrix:
@@ -15,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       env_list: ${{ steps.create-matrix.outputs.env_list }}
+      environments: ${{ steps.create-matrix.outputs.environments }}
 
     steps:
     - name: Checkout
@@ -30,9 +33,12 @@ jobs:
       run: |
         python .github/scripts/generate_config.py > env_config.json
         ENV_LIST=$(cat env_config.json | jq -c .)
+        ENVIRONMENTS=$(echo $ENV_LIST | jq -r 'keys | join(",")')
         echo "env_list=$ENV_LIST" >> $GITHUB_OUTPUT
+        echo "environments=$ENVIRONMENTS" >> $GITHUB_OUTPUT
 
     - name: Debug output
       run: |
         echo "Generated environment list:"
         cat env_config.json
+        echo "Environments: ${{ steps.create-matrix.outputs.environments }}"
