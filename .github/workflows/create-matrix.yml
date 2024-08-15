@@ -22,6 +22,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for all branches and tags
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -32,8 +34,20 @@ jobs:
       id: create-matrix
       run: |
         python .github/scripts/generate_config.py > env_config.json
-        ENV_LIST=$(cat env_config.json | jq -c .)
+        if [ $? -ne 0 ]; then
+          echo "Error: generate_config.py failed"
+          exit 1
+        fi
+        ENV_LIST=$(cat env_config.json)
+        if [ -z "$ENV_LIST" ]; then
+          echo "Error: env_config.json is empty"
+          exit 1
+        fi
         ENVIRONMENTS=$(echo $ENV_LIST | jq -r 'keys | join(",")')
+        if [ -z "$ENVIRONMENTS" ]; then
+          echo "Error: No environments found"
+          exit 1
+        fi
         echo "env_list=$ENV_LIST" >> $GITHUB_OUTPUT
         echo "environments=$ENVIRONMENTS" >> $GITHUB_OUTPUT
 
@@ -42,3 +56,7 @@ jobs:
         echo "Generated environment list:"
         cat env_config.json
         echo "Environments: ${{ steps.create-matrix.outputs.environments }}"
+        echo "Git status:"
+        git status
+        echo "Git log:"
+        git log --oneline -n 5
