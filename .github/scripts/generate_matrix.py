@@ -61,7 +61,7 @@ def get_environment_config(path: str, env: str) -> Dict[str, Any]:
     return {}
 
 
-def generate_matrix(base_sha: str) -> Dict[str, List[Dict[str, Any]]]:
+def generate_matrix(base_sha: str) -> Dict[str, Any]:
     """Generate the matrix for GitHub Actions."""
     try:
         changed_files = get_git_diff(base_sha)
@@ -81,8 +81,9 @@ def generate_matrix(base_sha: str) -> Dict[str, List[Dict[str, Any]]]:
 
         if not matrix["include"]:
             logging.info("No changes detected in any environment")
+            return {"include": None, "has_changes": False}
 
-        return matrix
+        return {"include": matrix["include"], "has_changes": True}
     except subprocess.CalledProcessError as e:
         logging.error(f"Git diff command failed: {e}")
         sys.exit(1)

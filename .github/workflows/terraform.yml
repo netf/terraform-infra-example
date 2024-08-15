@@ -60,9 +60,18 @@ jobs:
         MATRIX=$(python3 .github/scripts/generate_matrix.py "$BASE_SHA")
         echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
+  no_changes:
+    needs: prepare
+    if: needs.prepare.outputs.has_changes == 'false'
+    runs-on: ubuntu-latest
+    steps:
+    - name: No changes detected
+      run: |
+        echo "No Terraform changes detected. Skipping Terraform operations."  
+
   terraform:
     needs: prepare
-    if: fromJson(needs.prepare.outputs.matrix).include != null
+    if: needs.prepare.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix: ${{fromJson(needs.prepare.outputs.matrix)}}
