@@ -43,7 +43,7 @@ jobs:
         path: ${{ inputs.tf_build_path }}
 
     - name: Configure AWS credentials for account
-      uses: aws-actions/configure-aws-credentials@v1-node16
+      uses: aws-actions/configure-aws-credentials@v3
       with:
         role-to-assume: ${{ inputs.role_to_assume }}
         aws-region: ${{ inputs.region }}
