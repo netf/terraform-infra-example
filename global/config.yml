@@ -1,5 +1,7 @@
 ---
 prefix: "a-rsg-"
+assume_role_name: "terraform"
+
 tags:
   application_id: S1234
   application_name: data-platform

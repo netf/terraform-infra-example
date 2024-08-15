@@ -1,0 +1,83 @@
+name: Plan Terraform
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      region:
+        required: True
+        type: string
+      role_to_assume:
+        type: string
+        required: true
+      tf_version:
+        type: string
+        required: false
+        default: 1.3.1
+      tf_backend_bucket:
+        type: string
+        required: true
+      tf_backend_encrypt:
+        type: string
+        required: false
+        default: true
+      tf_backend_key:
+        type: string
+        required: false
+        default: terraform.tfstate
+      tf_backend_dynamodb_table:
+        type: string
+        required: false
+        default: "dynamodb"
+
+jobs:
+  Plan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ inputs.tf_version }}
+
+    - name: Configure AWS credentials for account
+      uses: aws-actions/configure-aws-credentials@v1-node16
+      with:
+        role-to-assume: ${{ inputs.role_to_assume }}
+        aws-region: ${{ inputs.region }}
+
+    - name: Terraform Init
+      id: init
+      working-directory: ${{ inputs.tf_build_path }}
+      run: |
+        terraform init \
+          -backend-config="region=${{ inputs.region }}" \
+          -backend-config="bucket=${{ inputs.tf_backend_bucket }}" \
+          -backend-config="key=${{ inputs.environment }}/${{ inputs.tf_backend_key }}" \
+          -backend-config="encrypt=${{ inputs.tf_backend_encrypt }}" \
+          -backend-config="dynamodb_table=${{ inputs.tf_backend_dynamodb_table }}"
+
+    - name: Terraform plan (for Apply)
+      if: ${{ inputs.tf_destroy_all_resources == 'False' }}
+      id: plan
+      working-directory: ${{ inputs.tf_build_path }}
+      run: |
+        terraform plan -no-color -input=false -out=tfplan \
+        -var-file=${{ github.workspace }}/${{ inputs.tf_deploy_path }}/${{ inputs.environment }}/${{ inputs.environment }}.tfvars
+      continue-on-error: true
+      env:
+        AWS_REGION: "${{ inputs.region }}"
+
+    - name: Publish Terraform Plan Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: terraform-plan-${{ inputs.environment }}
+        path: ${{ inputs.tf_build_path }}/tfplan

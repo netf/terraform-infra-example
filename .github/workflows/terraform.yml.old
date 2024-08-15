@@ -1,0 +1,200 @@
+name: Terraform CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  TF_INPUT: false
+  TF_IN_AUTOMATION: true
+  PYTHON_VERSION: '3.9'
+  TERRAFORM_VERSION: '1.6.0'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+    - name: Terraform Format Check
+      run: |
+        find workloads -name "*.tf" -exec dirname {} \; | sort -u | while read dir; do
+          terraform -chdir="$dir" fmt -check
+        done
+
+  prepare:
+    needs: lint
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyyaml
+
+    - name: Generate matrix
+      id: set-matrix
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          BASE_SHA=${{ github.event.pull_request.base.sha }}
+        else
+          BASE_SHA=$(git rev-parse HEAD^)
+        fi
+        MATRIX=$(python3 .github/scripts/generate_matrix.py "$BASE_SHA")
+        echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+  no_changes:
+    needs: prepare
+    if: needs.prepare.outputs.has_changes == false
+    runs-on: ubuntu-latest
+    steps:
+    - name: No changes detected
+      run: |
+        echo "No Terraform changes detected. Skipping Terraform operations."  
+
+  terraform:
+    needs: prepare
+    if: needs.prepare.outputs.has_changes == true
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{fromJson(needs.prepare.outputs.matrix)}}
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ matrix.aws_region }}
+        role-to-assume: ${{ matrix.aws_role }}
+        role-duration-seconds: 3600
+
+    - name: Terraform Init and Plan
+      id: plan
+      run: |
+        cd ${{ matrix.terraform_path }}/${{ matrix.environment }}
+        terraform init
+        CHANGED_FILES='${{ toJson(matrix.changed_files) }}'
+        TARGETS=$(echo $CHANGED_FILES | jq -r '.[]' | xargs -I{} echo "-target={}" | xargs)
+        terraform plan -no-color -input=false $TARGETS -out=tfplan | tee plan_output.txt
+        SUMMARY=$(grep -E '(Plan:|No changes.)' plan_output.txt | sed 's/Plan://' | tr -d '\n')
+        echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+      continue-on-error: true
+      env:
+        TF_VAR_environment: ${{ matrix.environment }}
+        TF_VAR_account_id: ${{ matrix.aws_account_id }}
+
+    - name: Run Checkov
+      id: checkov
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: env/${{ matrix.environment }}
+        framework: terraform
+        output_format: github_failed_only
+
+    - name: Process results
+      if: github.event_name == 'pull_request'
+      env:
+        PLAN: "${{ steps.plan.outputs.stdout }}"
+        PLAN_SUMMARY: "${{ steps.plan.outputs.summary }}"
+        CHECKOV_RESULTS: "${{ steps.checkov.outputs.results }}"
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}
+        script: |
+          const { PLAN, PLAN_SUMMARY, CHECKOV_RESULTS } = process.env;
+          
+          function getPlanEmoji(summary) {
+            if (summary.includes("No changes")) return "✅";
+            if (summary.includes("destroy")) return "🚨";
+            return "📝";
+          }
+          
+          function getCheckovStatus(results) {
+            return results ? "❌ Failed" : "✅ Passed";
+          }
+          
+          function formatCheckovDetails(results) {
+            if (!results) return "";
+            return `<details><summary>Show Checkov Results</summary>
+
+            \`\`\`
+            ${results}
+            \`\`\`
+
+            </details>`;
+          }
+          
+          const planEmoji = getPlanEmoji(PLAN_SUMMARY);
+          const checkovStatus = getCheckovStatus(CHECKOV_RESULTS);
+          const checkovDetails = formatCheckovDetails(CHECKOV_RESULTS);
+          
+          const output = `## Terraform Plan Results for ${{ matrix.environment }}
+
+          ### Summary ${planEmoji}
+          ${PLAN_SUMMARY}
+
+          <details><summary>Show Full Plan</summary>
+
+          \`\`\`hcl
+          ${PLAN}
+          \`\`\`
+
+          </details>
+
+          ### Security Scan Results 🔒
+          Checkov: ${checkovStatus}
+          ${checkovDetails}
+
+          *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          });
+
+    - name: Terraform Plan Status
+      if: steps.plan.outcome == 'failure'
+      run: exit 1
+
+    - name: Terraform Apply
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.plan.outcome == 'success'
+      run: |
+        cd env/${{ matrix.environment }}
+        terraform apply -auto-approve -input=false tfplan
+      env:
+        TF_VAR_environment: ${{ matrix.environment }}
+        TF_VAR_account_id: ${{ matrix.aws_account_id }}
+
+    - name: Cleanup Sensitive Data
+      if: always()
+      run: |
+        cd env/${{ matrix.environment }}
+        rm -f tfplan
+        rm -f $HOME/.aws/credentials

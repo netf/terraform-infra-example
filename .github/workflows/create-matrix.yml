@@ -1,0 +1,38 @@
+on:
+  workflow_call:
+    inputs:
+      python_version:
+        type: string
+        required: false
+        default: '3.9'
+    outputs:
+      env_list:
+        value: ${{ jobs.set-matrix.outputs.env_list }}
+
+jobs:
+  set-matrix:
+    name: Environments
+    runs-on: ubuntu-latest
+    outputs:
+      env_list: ${{ steps.create-matrix.outputs.env_list }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ inputs.python_version }}
+
+    - name: Execute generate_config.py
+      id: create-matrix
+      run: |
+        python generate_config.py > env_config.json
+        ENV_LIST=$(cat env_config.json | jq -c .)
+        echo "env_list=$ENV_LIST" >> $GITHUB_OUTPUT
+
+    - name: Debug output
+      run: |
+        echo "Generated environment list:"
+        cat env_config.json
