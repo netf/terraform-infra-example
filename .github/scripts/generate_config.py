@@ -1,8 +1,8 @@
 import os
 import json
-from typing import Dict, Any
+import subprocess
+from typing import Dict, Any, List
 from dataclasses import dataclass
-
 
 @dataclass
 class EnvironmentConfig:
@@ -11,12 +11,22 @@ class EnvironmentConfig:
     role_arn: str
     class_type: str
 
-
 def generate_role_arn(account: str) -> str:
     return f"arn:aws:iam::{account}:role/deployment-role"
 
+def get_changed_files() -> List[str]:
+    try:
+        # Get the files changed in the last commit
+        result = subprocess.run(['git', 'diff', '--name-only', 'HEAD~1', 'HEAD'],
+                                capture_output=True, text=True, check=True)
+        return result.stdout.splitlines()
+    except subprocess.CalledProcessError:
+        # If the above fails (e.g., first commit), get all tracked files
+        result = subprocess.run(['git', 'ls-files'],
+                                capture_output=True, text=True, check=True)
+        return result.stdout.splitlines()
 
-def parse_directory(path: str) -> Dict[str, EnvironmentConfig]:
+def parse_directory(path: str, changed_files: List[str]) -> Dict[str, EnvironmentConfig]:
     config = {}
     for class_type in os.listdir(path):
         class_path = os.path.join(path, class_type)
@@ -27,6 +37,11 @@ def parse_directory(path: str) -> Dict[str, EnvironmentConfig]:
             env_path = os.path.join(class_path, env)
             if not os.path.isdir(env_path):
                 continue
+
+            # Check if any file in this environment has changed
+            env_files = [f for f in changed_files if f.startswith(os.path.join(path, class_type, env))]
+            if not env_files:
+                continue  # Skip this environment if no files have changed
 
             account_dirs = os.listdir(env_path)
             if not account_dirs:
@@ -48,10 +63,10 @@ def parse_directory(path: str) -> Dict[str, EnvironmentConfig]:
 
     return config
 
-
 def main():
     root_dir = "workloads"
-    config = parse_directory(root_dir)
+    changed_files = get_changed_files()
+    config = parse_directory(root_dir, changed_files)
 
     json_output = {
         env: {
@@ -63,7 +78,6 @@ def main():
     }
 
     print(json.dumps(json_output, indent=2))
-
 
 if __name__ == "__main__":
     main()
