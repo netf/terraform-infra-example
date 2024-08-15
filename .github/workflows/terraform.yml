@@ -14,8 +14,6 @@ jobs:
   create-matrix:
     name: Set Matrix
     uses: ../create-matrix.yml
-    with:
-      json_path: ‘environments.json’
 
   Plan:
     needs: [create-matrix]
