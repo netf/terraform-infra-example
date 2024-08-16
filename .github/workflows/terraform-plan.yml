@@ -6,6 +6,9 @@ on:
       environment:
         type: string
         required: true
+      class:
+        type: string
+        required: true
       region:
         required: True
         type: string
@@ -61,7 +64,7 @@ jobs:
         terraform init \
           -backend-config="region=${{ inputs.region }}" \
           -backend-config="bucket=${{ inputs.tf_backend_bucket }}" \
-          -backend-config="key=${{ inputs.environment }}/${{ inputs.tf_backend_key }}" \
+          -backend-config="key=${{ inputs.class }}/${{ inputs.environment }}/${{ inputs.tf_backend_key }}" \
           -backend-config="encrypt=${{ inputs.tf_backend_encrypt }}" \
           -backend-config="dynamodb_table=${{ inputs.tf_backend_dynamodb_table }}"
 

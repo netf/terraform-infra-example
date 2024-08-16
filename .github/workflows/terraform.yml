@@ -24,6 +24,7 @@ jobs:
     secrets: inherit
     with:
       environment: ${{ matrix.environment }}
+      class: ${{ matrix.class }}
       region: ${{ matrix.region }}
       role_to_assume: ${{ matrix.env_role }}
       tf_backend_bucket: "terraform-state-bucket-12345"
