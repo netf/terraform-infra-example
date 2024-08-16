@@ -54,12 +54,3 @@ jobs:
         # Debug output
         echo "Generated matrix:"
         echo "$MATRIX_JSON" | jq .
-
-    - name: Debug info
-      run: |
-        echo "Git status:"
-        git status
-        echo "Git log:"
-        git log --oneline -n 5
-        echo "Directory structure:"
-        tree -L 4 workloads

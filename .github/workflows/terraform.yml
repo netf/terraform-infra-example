@@ -10,36 +10,33 @@ on:
 permissions: write-all
 
 jobs:
-
   create-matrix:
     name: Set Matrix
     uses: ./.github/workflows/create-matrix.yml
 
   Plan:
     needs: [create-matrix]
-    name: Terraform Plan - ${{ matrix.environment }}
+    name: Terraform Plan - ${{ matrix.path }}
     strategy:
       max-parallel: 4
-      matrix:
-        environment: ${{ fromJson(needs.create-matrix.outputs.environments) }}
+      matrix: ${{ fromJson(needs.create-matrix.outputs.matrix) }}
     uses: ./.github/workflows/terraform-plan.yml
     secrets: inherit
     with:
       environment: ${{ matrix.environment }}
-      region: ${{ fromJson(needs.create-matrix.outputs.env_list)[matrix.environment].region }}
-      role_to_assume: ${{ fromJson(needs.create-matrix.outputs.env_list)[matrix.environment].env_role }}
+      region: ${{ matrix.region }}
+      role_to_assume: ${{ matrix.env_role }}
       tf_backend_bucket: "terraform-state-bucket-12345"
 
   Apply:
-    needs: [ Plan, create-matrix ]
-    name: Terraform Apply - ${{ matrix.environment }}
+    needs: [Plan, create-matrix]
+    name: Terraform Apply - ${{ matrix.path }}
     strategy:
       max-parallel: 1
-      matrix:
-        environment: ["dev", "staging", "production"]
+      matrix: ${{ fromJson(needs.create-matrix.outputs.matrix) }}
     uses: ./.github/workflows/terraform-apply.yml
     secrets: inherit
     with:
       environment: ${{ matrix.environment }}
-      region: ${{fromJson(needs.set-matrix.outputs.matrix)[matrix.environment].region }}
-      role_to_assume: ${{fromJson(needs.set-matrix.outputs.matrix)[matrix.environment].env_role }}
+      region: ${{ matrix.region }}
+      role_to_assume: ${{ matrix.env_role }}
