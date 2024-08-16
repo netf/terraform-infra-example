@@ -106,14 +106,16 @@ def main():
         modified_files = get_modified_files(root_dir)
         configs = parse_modified_files(modified_files)
 
+        print(configs)
+
         json_output = {
-            env: {
+            item: {
                 "region": cfg.region,
                 "account": cfg.account,
+                "env": cfg.env,
                 "role_arn": cfg.role_arn,
                 "class": cfg.class_type,
-                "tf_build_paths": list(cfg.tf_build_paths)
-            } for env, cfg in configs.items()
+            } for item, cfg in configs.items()
         }
 
         print(json.dumps(json_output, indent=2))
