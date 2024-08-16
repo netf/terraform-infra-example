@@ -106,8 +106,6 @@ def main():
         modified_files = get_modified_files(root_dir)
         configs = parse_modified_files(modified_files)
 
-        print(configs)
-
         json_output = {
             item: {
                 "region": cfg.region,
