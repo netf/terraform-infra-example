@@ -28,17 +28,20 @@ def run_git_command(command: List[str], cwd: str) -> str:
 
 def get_modified_files(root_dir: str) -> Set[str]:
     try:
-        # Get the SHA of the latest commit on the remote main branch
-        run_git_command(['git', 'fetch', 'origin', 'main'], root_dir)
-        base_sha = run_git_command(['git', 'rev-parse', 'origin/main'], root_dir)
+        # Determine if we're in a CI/CD environment
+        is_ci = os.environ.get('CI', 'false').lower() == 'true'
 
-        # Get the SHA of the current HEAD
-        head_sha = run_git_command(['git', 'rev-parse', 'HEAD'], root_dir)
+        if is_ci:
+            # In CI/CD, compare with the merge-base of HEAD and origin/main
+            run_git_command(['git', 'fetch', 'origin', 'main'], root_dir)
+            merge_base = run_git_command(['git', 'merge-base', 'HEAD', 'origin/main'], root_dir)
+            logger.info(f"CI/CD environment detected. Using merge-base: {merge_base}")
+            diff_command = ['git', 'diff', '--name-only', merge_base, 'HEAD']
+        else:
+            # Locally, compare with origin/main
+            run_git_command(['git', 'fetch', 'origin', 'main'], root_dir)
+            diff_command = ['git', 'diff', '--name-only', 'origin/main...HEAD']
 
-        logger.info(f"Comparing changes between {base_sha} and {head_sha}")
-
-        # Get the list of modified files
-        diff_command = ['git', 'diff', '--name-only', base_sha, head_sha]
         diff_output = run_git_command(diff_command, root_dir)
         modified_files = set(diff_output.splitlines())
 
