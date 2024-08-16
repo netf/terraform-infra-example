@@ -31,6 +31,9 @@ def get_default_branch(root_dir: str) -> str:
         logger.warning("Failed to determine default branch, falling back to 'main'")
         return 'main'
 
+def get_current_branch(root_dir: str) -> str:
+    return run_git_command(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], root_dir)
+
 def get_modified_files(root_dir: str) -> Set[str]:
     event_name = os.environ.get('GITHUB_EVENT_NAME', '')
     base_ref = os.environ.get('GITHUB_BASE_REF', '')
@@ -40,6 +43,7 @@ def get_modified_files(root_dir: str) -> Set[str]:
     logger.info(f"Event: {event_name}, Base ref: {base_ref}, Head ref: {head_ref}")
 
     default_branch = os.environ.get('DEFAULT_BRANCH') or get_default_branch(root_dir)
+    current_branch = get_current_branch(root_dir)
 
     if event_name == 'pull_request':
         logger.info("Processing pull request event")
@@ -47,8 +51,12 @@ def get_modified_files(root_dir: str) -> Set[str]:
         diff_command = ['git', 'diff', '--name-only', f'origin/{base_ref}...{github_sha}']
     elif event_name == 'push':
         logger.info("Processing push event")
-        run_git_command(['git', 'fetch', 'origin', default_branch], root_dir)
-        diff_command = ['git', 'diff', '--name-only', f'origin/{default_branch}...{github_sha}']
+        if current_branch == default_branch:
+            logger.info("Push to default branch detected")
+            diff_command = ['git', 'diff', '--name-only', 'HEAD^', 'HEAD']
+        else:
+            run_git_command(['git', 'fetch', 'origin', default_branch], root_dir)
+            diff_command = ['git', 'diff', '--name-only', f'origin/{default_branch}...{github_sha}']
     else:
         logger.warning(f"Unhandled event type: {event_name}. Comparing with the default branch.")
         run_git_command(['git', 'fetch', 'origin', default_branch], root_dir)
@@ -122,6 +130,10 @@ def main():
 
         print(json.dumps(json_output, indent=2))
         logger.info("Successfully generated environment configurations")
+
+        if not configs:
+            logger.warning("No environments found in the output")
+
     except Exception as e:
         logger.exception("An error occurred during script execution")
         raise
