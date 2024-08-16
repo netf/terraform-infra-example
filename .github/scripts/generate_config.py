@@ -1,8 +1,13 @@
 import os
 import json
 import subprocess
+import logging
 from typing import Dict, List, Set
 from dataclasses import dataclass
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -16,33 +21,41 @@ class EnvironmentConfig:
 
 def run_git_command(command: List[str], cwd: str) -> str:
     try:
-        return subprocess.check_output(command, cwd=cwd, universal_newlines=True).strip()
+        return subprocess.check_output(command, cwd=cwd, universal_newlines=True, stderr=subprocess.PIPE).strip()
     except subprocess.CalledProcessError as e:
-        print(f"Error running git command {' '.join(command)}: {e}")
-        return ""
+        logger.error(f"Error running git command {' '.join(command)}: {e.stderr}")
+        raise
 
 
 def get_modified_files(root_dir: str) -> Set[str]:
     event_name = os.environ.get('GITHUB_EVENT_NAME', '')
     base_ref = os.environ.get('GITHUB_BASE_REF', '')
-    github_ref = os.environ.get('GITHUB_REF', '')
+    head_ref = os.environ.get('GITHUB_HEAD_REF', '')
+    github_sha = os.environ.get('GITHUB_SHA', '')
+
+    logger.info(f"Event: {event_name}, Base ref: {base_ref}, Head ref: {head_ref}")
 
     if event_name == 'pull_request':
-        # For pull requests, compare with the base branch
+        logger.info("Processing pull request event")
         run_git_command(['git', 'fetch', 'origin', base_ref], root_dir)
-        diff_command = ['git', 'diff', '--name-only', f'origin/{base_ref}...HEAD']
+        diff_command = ['git', 'diff', '--name-only', f'origin/{base_ref}...{github_sha}']
     elif event_name == 'push':
-        # For pushes, compare with the default branch (usually 'main')
-        default_branch = 'main'
+        logger.info("Processing push event")
+        default_branch = os.environ.get('DEFAULT_BRANCH', 'main')
         run_git_command(['git', 'fetch', 'origin', default_branch], root_dir)
-        diff_command = ['git', 'diff', '--name-only', f'origin/{default_branch}...HEAD']
+        diff_command = ['git', 'diff', '--name-only', f'origin/{default_branch}...{github_sha}']
     else:
-        # For other events or local testing, compare with the previous commit
+        logger.warning(f"Unhandled event type: {event_name}. Comparing with the previous commit.")
         diff_command = ['git', 'diff', '--name-only', 'HEAD^', 'HEAD']
 
-    diff_output = run_git_command(diff_command, root_dir)
-    return set(diff_output.splitlines())
-
+    try:
+        diff_output = run_git_command(diff_command, root_dir)
+        modified_files = set(diff_output.splitlines())
+        logger.info(f"Modified files: {modified_files}")
+        return modified_files
+    except subprocess.CalledProcessError:
+        logger.error("Failed to get modified files")
+        return set()
 
 def parse_environment(file_path: str) -> Dict[str, str]:
     parts = file_path.split(os.path.sep)
@@ -57,10 +70,8 @@ def parse_environment(file_path: str) -> Dict[str, str]:
         'tf_build_path': os.path.dirname(file_path)
     }
 
-
 def generate_role_arn(account: str) -> str:
     return f"arn:aws:iam::{account}:role/deployment-role"
-
 
 def parse_modified_files(modified_files: Set[str]) -> Dict[str, EnvironmentConfig]:
     configs: Dict[str, EnvironmentConfig] = {}
@@ -84,24 +95,27 @@ def parse_modified_files(modified_files: Set[str]) -> Dict[str, EnvironmentConfi
 
     return configs
 
-
 def main():
-    root_dir = os.environ.get('GITHUB_WORKSPACE', os.getcwd())
-    modified_files = get_modified_files(root_dir)
-    configs = parse_modified_files(modified_files)
+    try:
+        root_dir = os.environ.get('GITHUB_WORKSPACE', '.')
+        modified_files = get_modified_files(root_dir)
+        configs = parse_modified_files(modified_files)
 
-    json_output = {
-        env: {
-            "region": cfg.region,
-            "account": cfg.account,
-            "role_arn": cfg.role_arn,
-            "class": cfg.class_type,
-            "tf_build_paths": list(cfg.tf_build_paths)
-        } for env, cfg in configs.items()
-    }
+        json_output = {
+            env: {
+                "region": cfg.region,
+                "account": cfg.account,
+                "role_arn": cfg.role_arn,
+                "class": cfg.class_type,
+                "tf_build_paths": list(cfg.tf_build_paths)
+            } for env, cfg in configs.items()
+        }
 
-    print(json.dumps(json_output, indent=2))
-
+        print(json.dumps(json_output, indent=2))
+        logger.info("Successfully generated environment configurations")
+    except Exception as e:
+        logger.exception("An error occurred during script execution")
+        raise
 
 if __name__ == "__main__":
     main()
