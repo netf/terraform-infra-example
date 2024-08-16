@@ -16,7 +16,7 @@ jobs:
 
   Plan:
     needs: [create-matrix]
-    name: ${{ matrix.path }}
+    name: Terraform Plan - ${{ matrix.path }}
     strategy:
       max-parallel: 4
       matrix: ${{ fromJson(needs.create-matrix.outputs.matrix) }}
