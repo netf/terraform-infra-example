@@ -1,3 +1,5 @@
+name: Set Matrix
+
 on:
   workflow_call:
     inputs:
@@ -6,18 +8,15 @@ on:
         required: false
         default: '3.9'
     outputs:
-      env_list:
-        value: ${{ jobs.set-matrix.outputs.env_list }}
-      environments:
-        value: ${{ jobs.set-matrix.outputs.environments }}
+      matrix:
+        value: ${{ jobs.set-matrix.outputs.matrix }}
 
 jobs:
   set-matrix:
-    name: Environments
+    name: Set Environment Matrix
     runs-on: ubuntu-latest
     outputs:
-      env_list: ${{ steps.create-matrix.outputs.env_list }}
-      environments: ${{ steps.create-matrix.outputs.environments }}
+      matrix: ${{ steps.create-matrix.outputs.matrix }}
 
     steps:
     - name: Checkout
@@ -30,25 +29,34 @@ jobs:
       with:
         python-version: ${{ inputs.python_version }}
 
-    - name: Execute generate_config.py
+    - name: Execute generate_config.py and create matrix
       id: create-matrix
       run: |
+        # Run the Python script and capture its output
         python .github/scripts/generate_config.py > script_output.txt
-        cat script_output.txt
-        ENV_LIST=$(tail -n 1 script_output.txt | jq -c '.')
-        if [ -z "$ENV_LIST" ] || [ "$ENV_LIST" == "{}" ]; then
-          echo "Error: No environments found in the output"
+        
+        # Extract only the JSON part from the output
+        JSON_OUTPUT=$(sed -n '/^{/,/^}$/p' script_output.txt | tr -d '\n')
+        
+        # Validate JSON output
+        if [ -z "$JSON_OUTPUT" ] || ! echo "$JSON_OUTPUT" | jq . >/dev/null 2>&1; then
+          echo "Error: Invalid or empty JSON output"
+          cat script_output.txt
           exit 1
         fi
-        ENVIRONMENTS=$(echo $ENV_LIST | jq -r 'keys | join(",")')
-        echo "env_list=$ENV_LIST" >> $GITHUB_OUTPUT
-        echo "environments=$ENVIRONMENTS" >> $GITHUB_OUTPUT
+        
+        # Create the matrix JSON
+        MATRIX_JSON=$(echo "$JSON_OUTPUT" | jq -c '{ include: [ to_entries[] | {path: .key} + .value ] }')
+        
+        # Set the matrix output
+        echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
+        
+        # Debug output
+        echo "Generated matrix:"
+        echo "$MATRIX_JSON" | jq .
 
-    - name: Debug output
+    - name: Debug info
       run: |
-        echo "Generated environment list:"
-        echo "${{ steps.create-matrix.outputs.env_list }}"
-        echo "Environments: ${{ steps.create-matrix.outputs.environments }}"
         echo "Git status:"
         git status
         echo "Git log:"
