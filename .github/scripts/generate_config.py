@@ -28,20 +28,28 @@ def run_git_command(command: List[str], cwd: str) -> str:
 
 def get_modified_files(root_dir: str) -> Set[str]:
     try:
-        # Determine if we're in a CI/CD environment
-        is_ci = os.environ.get('CI', 'false').lower() == 'true'
+        event_name = os.environ.get('GITHUB_EVENT_NAME', '')
+        github_sha = os.environ.get('GITHUB_SHA', 'HEAD')
+        base_sha = os.environ.get('GITHUB_BASE_REF', '')
 
-        if is_ci:
-            # In CI/CD, compare with the merge-base of HEAD and origin/main
-            run_git_command(['git', 'fetch', 'origin', 'main'], root_dir)
-            merge_base = run_git_command(['git', 'merge-base', 'HEAD', 'origin/main'], root_dir)
-            logger.info(f"CI/CD environment detected. Using merge-base: {merge_base}")
-            diff_command = ['git', 'diff', '--name-only', merge_base, 'HEAD']
+        logger.info(f"Event: {event_name}, SHA: {github_sha}, Base: {base_sha}")
+
+        # Ensure we have the full history
+        run_git_command(['git', 'fetch', '--quiet'], root_dir)
+
+        if event_name == 'pull_request':
+            base_branch = f"origin/{base_sha}"
+            diff_command = ['git', 'diff', '--name-only', base_branch, github_sha]
+        elif event_name == 'push':
+            # For push events, compare with the previous commit
+            diff_command = ['git', 'diff', '--name-only', f'{github_sha}^', github_sha]
         else:
-            # Locally, compare with origin/main
-            run_git_command(['git', 'fetch', 'origin', 'main'], root_dir)
-            diff_command = ['git', 'diff', '--name-only', 'origin/main...HEAD']
+            # Fallback for other events or local runs
+            default_branch = run_git_command(['git', 'rev-parse', '--abbrev-ref', 'origin/HEAD'], root_dir).split('/')[
+                -1]
+            diff_command = ['git', 'diff', '--name-only', f'origin/{default_branch}...{github_sha}']
 
+        logger.info(f"Diff command: {' '.join(diff_command)}")
         diff_output = run_git_command(diff_command, root_dir)
         modified_files = set(diff_output.splitlines())
 
