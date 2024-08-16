@@ -54,8 +54,8 @@ def get_modified_files(root_dir: str) -> Set[str]:
         if current_branch == default_branch:
             logger.info("Push to default branch detected")
             # Get the SHA of the last push
-            last_push_sha = run_git_command(['git', 'rev-parse', 'HEAD@{1}'], root_dir)
-            diff_command = ['git', 'diff', '--name-only', last_push_sha, 'HEAD']
+            last_pushed_sha = run_git_command(['git', 'rev-list', '-n', '1', f'{github_sha}^'], root_dir)
+            diff_command = ['git', 'diff', '--name-only', last_pushed_sha, github_sha]
         else:
             run_git_command(['git', 'fetch', 'origin', default_branch], root_dir)
             diff_command = ['git', 'diff', '--name-only', f'origin/{default_branch}...{github_sha}']
