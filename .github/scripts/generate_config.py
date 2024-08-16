@@ -5,9 +5,9 @@ import logging
 from typing import Dict, List, Set
 from dataclasses import dataclass
 
-# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class EnvironmentConfig:
@@ -17,6 +17,7 @@ class EnvironmentConfig:
     class_type: str
     tf_build_paths: Set[str]
 
+
 def run_git_command(command: List[str], cwd: str) -> str:
     try:
         return subprocess.check_output(command, cwd=cwd, universal_newlines=True, stderr=subprocess.PIPE).strip()
@@ -24,55 +25,29 @@ def run_git_command(command: List[str], cwd: str) -> str:
         logger.error(f"Error running git command {' '.join(command)}: {e.stderr}")
         raise
 
-def get_default_branch(root_dir: str) -> str:
-    try:
-        return run_git_command(['git', 'remote', 'show', 'origin'], root_dir).split('\n')[3].split()[-1]
-    except Exception:
-        logger.warning("Failed to determine default branch, falling back to 'main'")
-        return 'main'
-
-def get_current_branch(root_dir: str) -> str:
-    return run_git_command(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], root_dir)
 
 def get_modified_files(root_dir: str) -> Set[str]:
-    event_name = os.environ.get('GITHUB_EVENT_NAME', '')
-    base_ref = os.environ.get('GITHUB_BASE_REF', '')
-    head_ref = os.environ.get('GITHUB_HEAD_REF', '')
-    github_sha = os.environ.get('GITHUB_SHA', 'HEAD')
-
-    logger.info(f"Event: {event_name}, Base ref: {base_ref}, Head ref: {head_ref}")
-
-    default_branch = os.environ.get('DEFAULT_BRANCH') or get_default_branch(root_dir)
-    current_branch = get_current_branch(root_dir)
-
-    if event_name == 'pull_request':
-        logger.info("Processing pull request event")
-        run_git_command(['git', 'fetch', 'origin', base_ref], root_dir)
-        diff_command = ['git', 'diff', '--name-only', f'origin/{base_ref}...{github_sha}']
-    elif event_name == 'push':
-        logger.info("Processing push event")
-        if current_branch == default_branch:
-            logger.info("Push to default branch detected")
-            # Get the SHA of the last push
-            last_pushed_sha = run_git_command(['git', 'rev-list', '-n', '1', f'{github_sha}^'], root_dir)
-            diff_command = ['git', 'diff', '--name-only', last_pushed_sha, github_sha]
-        else:
-            run_git_command(['git', 'fetch', 'origin', default_branch], root_dir)
-            diff_command = ['git', 'diff', '--name-only', f'origin/{default_branch}...{github_sha}']
-    else:
-        logger.warning(f"Unhandled event type: {event_name}. Comparing with the default branch.")
-        run_git_command(['git', 'fetch', 'origin', default_branch], root_dir)
-        merge_base = run_git_command(['git', 'merge-base', f'origin/{default_branch}', 'HEAD'], root_dir)
-        diff_command = ['git', 'diff', '--name-only', merge_base, 'HEAD']
-
     try:
+        # Get the SHA of the latest commit on the remote main branch
+        run_git_command(['git', 'fetch', 'origin', 'main'], root_dir)
+        base_sha = run_git_command(['git', 'rev-parse', 'origin/main'], root_dir)
+
+        # Get the SHA of the current HEAD
+        head_sha = run_git_command(['git', 'rev-parse', 'HEAD'], root_dir)
+
+        logger.info(f"Comparing changes between {base_sha} and {head_sha}")
+
+        # Get the list of modified files
+        diff_command = ['git', 'diff', '--name-only', base_sha, head_sha]
         diff_output = run_git_command(diff_command, root_dir)
         modified_files = set(diff_output.splitlines())
+
         logger.info(f"Modified files: {modified_files}")
         return modified_files
     except subprocess.CalledProcessError:
-        logger.error("Failed to get modified files")
+        logger.error("Failed to get modified files", exc_info=True)
         return set()
+
 
 def parse_environment(file_path: str) -> Dict[str, str]:
     parts = file_path.split(os.path.sep)
@@ -87,8 +62,10 @@ def parse_environment(file_path: str) -> Dict[str, str]:
         'tf_build_path': os.path.dirname(file_path)
     }
 
+
 def generate_role_arn(account: str) -> str:
     return f"arn:aws:iam::{account}:role/deployment-role"
+
 
 def parse_modified_files(modified_files: Set[str]) -> Dict[str, EnvironmentConfig]:
     configs: Dict[str, EnvironmentConfig] = {}
@@ -111,6 +88,7 @@ def parse_modified_files(modified_files: Set[str]) -> Dict[str, EnvironmentConfi
         configs[env].tf_build_paths.add(env_info['tf_build_path'])
 
     return configs
+
 
 def main():
     try:
@@ -139,6 +117,7 @@ def main():
     except Exception as e:
         logger.exception("An error occurred during script execution")
         raise
+
 
 if __name__ == "__main__":
     main()
