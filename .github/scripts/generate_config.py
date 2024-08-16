@@ -25,7 +25,6 @@ def run_git_command(command: List[str], cwd: str) -> str:
 def get_modified_files(root_dir: str) -> Set[str]:
     event_name = os.environ.get('GITHUB_EVENT_NAME', '')
     base_ref = os.environ.get('GITHUB_BASE_REF', '')
-    head_ref = os.environ.get('GITHUB_HEAD_REF', '')
     github_ref = os.environ.get('GITHUB_REF', '')
 
     if event_name == 'pull_request':
@@ -33,15 +32,10 @@ def get_modified_files(root_dir: str) -> Set[str]:
         run_git_command(['git', 'fetch', 'origin', base_ref], root_dir)
         diff_command = ['git', 'diff', '--name-only', f'origin/{base_ref}...HEAD']
     elif event_name == 'push':
-        # For pushes, get all commits in this push
-        if github_ref.startswith('refs/heads/'):
-            current_branch = github_ref.split('/')[-1]
-            base_branch = os.environ.get('GITHUB_BASE_REF', 'main')  # Fallback to 'main' if not set
-            run_git_command(['git', 'fetch', 'origin', base_branch], root_dir)
-            diff_command = ['git', 'diff', '--name-only', f'origin/{base_branch}...HEAD']
-        else:
-            # Fallback to comparing with the previous commit if branch name is not available
-            diff_command = ['git', 'diff', '--name-only', 'HEAD^', 'HEAD']
+        # For pushes, compare with the default branch (usually 'main')
+        default_branch = 'main'
+        run_git_command(['git', 'fetch', 'origin', default_branch], root_dir)
+        diff_command = ['git', 'diff', '--name-only', f'origin/{default_branch}...HEAD']
     else:
         # For other events or local testing, compare with the previous commit
         diff_command = ['git', 'diff', '--name-only', 'HEAD^', 'HEAD']
