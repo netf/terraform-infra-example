@@ -9,7 +9,6 @@ from dataclasses import dataclass
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class EnvironmentConfig:
     region: str
@@ -18,7 +17,6 @@ class EnvironmentConfig:
     class_type: str
     tf_build_paths: Set[str]
 
-
 def run_git_command(command: List[str], cwd: str) -> str:
     try:
         return subprocess.check_output(command, cwd=cwd, universal_newlines=True, stderr=subprocess.PIPE).strip()
@@ -26,14 +24,22 @@ def run_git_command(command: List[str], cwd: str) -> str:
         logger.error(f"Error running git command {' '.join(command)}: {e.stderr}")
         raise
 
+def get_default_branch(root_dir: str) -> str:
+    try:
+        return run_git_command(['git', 'remote', 'show', 'origin'], root_dir).split('\n')[3].split()[-1]
+    except Exception:
+        logger.warning("Failed to determine default branch, falling back to 'main'")
+        return 'main'
 
 def get_modified_files(root_dir: str) -> Set[str]:
     event_name = os.environ.get('GITHUB_EVENT_NAME', '')
     base_ref = os.environ.get('GITHUB_BASE_REF', '')
     head_ref = os.environ.get('GITHUB_HEAD_REF', '')
-    github_sha = os.environ.get('GITHUB_SHA', '')
+    github_sha = os.environ.get('GITHUB_SHA', 'HEAD')
 
     logger.info(f"Event: {event_name}, Base ref: {base_ref}, Head ref: {head_ref}")
+
+    default_branch = os.environ.get('DEFAULT_BRANCH') or get_default_branch(root_dir)
 
     if event_name == 'pull_request':
         logger.info("Processing pull request event")
@@ -41,12 +47,13 @@ def get_modified_files(root_dir: str) -> Set[str]:
         diff_command = ['git', 'diff', '--name-only', f'origin/{base_ref}...{github_sha}']
     elif event_name == 'push':
         logger.info("Processing push event")
-        default_branch = os.environ.get('DEFAULT_BRANCH', 'main')
         run_git_command(['git', 'fetch', 'origin', default_branch], root_dir)
         diff_command = ['git', 'diff', '--name-only', f'origin/{default_branch}...{github_sha}']
     else:
-        logger.warning(f"Unhandled event type: {event_name}. Comparing with the previous commit.")
-        diff_command = ['git', 'diff', '--name-only', 'HEAD^', 'HEAD']
+        logger.warning(f"Unhandled event type: {event_name}. Comparing with the default branch.")
+        run_git_command(['git', 'fetch', 'origin', default_branch], root_dir)
+        merge_base = run_git_command(['git', 'merge-base', f'origin/{default_branch}', 'HEAD'], root_dir)
+        diff_command = ['git', 'diff', '--name-only', merge_base, 'HEAD']
 
     try:
         diff_output = run_git_command(diff_command, root_dir)
@@ -97,7 +104,9 @@ def parse_modified_files(modified_files: Set[str]) -> Dict[str, EnvironmentConfi
 
 def main():
     try:
-        root_dir = os.environ.get('GITHUB_WORKSPACE', '.')
+        root_dir = os.environ.get('GITHUB_WORKSPACE', os.getcwd())
+        logger.info(f"Using root directory: {root_dir}")
+
         modified_files = get_modified_files(root_dir)
         configs = parse_modified_files(modified_files)
 
