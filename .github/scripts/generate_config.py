@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 class EnvironmentConfig:
     region: str
     account: str
+    env: str
     role_arn: str
     class_type: str
-    tf_build_paths: Set[str]
 
 
 def run_git_command(command: List[str], cwd: str) -> str:
@@ -86,17 +86,14 @@ def parse_modified_files(modified_files: Set[str]) -> Dict[str, EnvironmentConfi
         if not env_info:
             continue
 
-        env = env_info['env']
-        if env not in configs:
-            configs[env] = EnvironmentConfig(
-                region=env_info['region'],
-                account=env_info['account'],
-                role_arn=generate_role_arn(env_info['account']),
-                class_type=env_info['class_type'],
-                tf_build_paths=set()
-            )
-
-        configs[env].tf_build_paths.add(env_info['tf_build_path'])
+        tf_build_path = env_info['tf_build_path']
+        configs[tf_build_path] = EnvironmentConfig(
+            region=env_info['region'],
+            account=env_info['account'],
+            env=env_info['env'],
+            role_arn=generate_role_arn(env_info['account']),
+            class_type=env_info['class_type']
+        )
 
     return configs
 
